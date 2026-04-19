@@ -1,6 +1,43 @@
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
+import axios from 'axios'
+import { Link, useNavigate } from 'react-router-dom'
 
-function Login() {
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'
+
+function Login({ onLoginSuccess, showSwitchLink = true }) {
+  const navigate = useNavigate()
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+  })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+
+  const handleChange = (event) => {
+    const { name, value } = event.target
+
+    setFormData((currentData) => ({
+      ...currentData,
+      [name]: value,
+    }))
+  }
+
+  const handleSubmit = async (event) => {
+    event.preventDefault()
+    setErrorMessage('')
+    setIsSubmitting(true)
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/auth/login`, formData)
+      onLoginSuccess(response.data.user)
+      navigate('/', { replace: true })
+    } catch (error) {
+      setErrorMessage(error.response?.data?.message || 'Unable to log in right now. Please try again.')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   return (
     <section className="section login-section">
       <div className="login-shell">
@@ -30,10 +67,18 @@ function Login() {
             <p>Use your email and password to access your Yojana Setu account.</p>
           </div>
 
-          <form className="login-form">
+          <form className="login-form" onSubmit={handleSubmit}>
             <label className="field" htmlFor="email">
               Email address
-              <input id="email" type="email" name="email" placeholder="name@example.com" />
+              <input
+                id="email"
+                type="email"
+                name="email"
+                placeholder="name@example.com"
+                value={formData.email}
+                onChange={handleChange}
+                required
+              />
             </label>
 
             <label className="field" htmlFor="password">
@@ -43,6 +88,9 @@ function Login() {
                 type="password"
                 name="password"
                 placeholder="Enter your password"
+                value={formData.password}
+                onChange={handleChange}
+                required
               />
             </label>
 
@@ -56,17 +104,21 @@ function Login() {
               </Link>
             </div>
 
-            <button className="button button-primary" type="submit">
-              Log in
+            {errorMessage ? <p className="form-message form-message-error">{errorMessage}</p> : null}
+
+            <button className="button button-primary" type="submit" disabled={isSubmitting}>
+              {isSubmitting ? 'Logging in...' : 'Log in'}
             </button>
           </form>
 
-          <p className="login-footer">
-            Need an account?{' '}
-            <Link className="text-link" to="/register">
-              Create one
-            </Link>
-          </p>
+          {showSwitchLink ? (
+            <p className="login-footer">
+              Need an account?{' '}
+              <Link className="text-link" to="/auth">
+                Create one
+              </Link>
+            </p>
+          ) : null}
         </article>
       </div>
     </section>

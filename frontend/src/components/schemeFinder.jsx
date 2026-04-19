@@ -1,89 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
+import axios from 'axios'
 
-const schemes = [
-  {
-    name: 'PM Kisan Samman Nidhi',
-    description: 'Income support for eligible farmer families.',
-    minAge: 18,
-    maxIncome: 1000000,
-    categories: ['Any'],
-    states: ['Any'],
-    occupations: ['Farmer'],
-    benefit: 'Direct income support of Rs. 6,000 per year in installments.',
-  },
-  {
-    name: 'Post Matric Scholarship',
-    description: 'Scholarship support for eligible students from reserved categories.',
-    minAge: 16,
-    maxIncome: 250000,
-    categories: ['SC', 'ST', 'OBC'],
-    states: ['Any'],
-    occupations: ['Student'],
-    benefit: 'Helps eligible students cover study-related expenses after Class 10.',
-  },
-  {
-    name: 'Atal Pension Yojana',
-    description: 'Pension scheme for workers in the unorganised sector.',
-    minAge: 18,
-    maxAge: 40,
-    maxIncome: 800000,
-    categories: ['Any'],
-    states: ['Any'],
-    occupations: ['Self-Employed', 'Worker'],
-    benefit: 'Builds a pension safety net with regular contributions.',
-  },
-  {
-    name: 'Mukhyamantri Kanya Vivah Yojana',
-    description: 'Support for eligible women beneficiaries in selected states.',
-    minAge: 18,
-    maxIncome: 300000,
-    categories: ['Any'],
-    states: ['Bihar', 'Madhya Pradesh'],
-    occupations: ['Any'],
-    benefit: 'Provides financial support for eligible marriage assistance cases.',
-  },
-  {
-    name: 'PM Ujjwala Yojana',
-    description: 'LPG connection support for eligible low-income households.',
-    minAge: 18,
-    maxIncome: 300000,
-    categories: ['SC', 'ST', 'OBC', 'EWS'],
-    states: ['Any'],
-    occupations: ['Homemaker', 'Worker', 'Self-Employed'],
-    benefit: 'Helps households move to cleaner cooking fuel.',
-  },
-  {
-    name: 'National Apprenticeship Promotion Scheme',
-    description: 'Encourages apprenticeship opportunities for youth and fresh workers.',
-    minAge: 14,
-    maxAge: 35,
-    maxIncome: 600000,
-    categories: ['Any'],
-    states: ['Any'],
-    occupations: ['Student', 'Worker'],
-    benefit: 'Supports skilling and on-the-job training opportunities.',
-  },
-  {
-    name: 'Stand-Up India',
-    description: 'Loan support for entrepreneurs from underrepresented groups.',
-    minAge: 18,
-    maxIncome: 1000000,
-    categories: ['SC', 'ST', 'Women'],
-    states: ['Any'],
-    occupations: ['Self-Employed'],
-    benefit: 'Offers bank loan support for starting new enterprises.',
-  },
-]
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'
 
 const initialForm = {
   age: '',
-  annualFamilyIncome: '',
+  income: '',
   category: '',
+  gender: '',
   state: '',
-  occupation: '',
 }
 
 const categories = ['General', 'OBC', 'SC', 'ST', 'EWS', 'Women']
+const genders = ['Male', 'Female', 'Other']
 
 const states = [
   'Andhra Pradesh',
@@ -99,89 +28,50 @@ const states = [
   'West Bengal',
 ]
 
-const occupations = ['Farmer', 'Homemaker', 'Self-Employed', 'Student', 'Worker']
-
-function matchesRule(value, allowedValues) {
-  if (!value) {
-    return true
-  }
-
-  return allowedValues.includes('Any') || allowedValues.includes(value)
-}
-
-function formatEligibility(scheme) {
-  const parts = []
-
-  if (scheme.minAge !== undefined || scheme.maxAge !== undefined) {
-    if (scheme.minAge !== undefined && scheme.maxAge !== undefined) {
-      parts.push(`Age ${scheme.minAge}-${scheme.maxAge}`)
-    } else if (scheme.minAge !== undefined) {
-      parts.push(`Age ${scheme.minAge}+`)
-    }
-  }
-
-  if (scheme.maxIncome !== undefined) {
-    parts.push(`Income up to Rs. ${scheme.maxIncome.toLocaleString('en-IN')}`)
-  }
-
-  if (!scheme.categories.includes('Any')) {
-    parts.push(scheme.categories.join(', '))
-  }
-
-  if (!scheme.states.includes('Any')) {
-    parts.push(scheme.states.join(', '))
-  }
-
-  if (!scheme.occupations.includes('Any')) {
-    parts.push(scheme.occupations.join(', '))
-  }
-
-  return parts
-}
-
 function SchemeFinder() {
   const [form, setForm] = useState(initialForm)
-  const [submittedForm, setSubmittedForm] = useState(initialForm)
+  const [recommendations, setRecommendations] = useState([])
+  const [isLoading, setIsLoading] = useState(false)
+  const [errorMessage, setErrorMessage] = useState('')
+  const [infoMessage, setInfoMessage] = useState('')
   const [hasSearched, setHasSearched] = useState(false)
-
-  const matchedSchemes = useMemo(() => {
-    return schemes.filter((scheme) => {
-      const age = Number(submittedForm.age)
-      const annualFamilyIncome = Number(submittedForm.annualFamilyIncome)
-
-      const ageMatches =
-        !submittedForm.age ||
-        ((scheme.minAge === undefined || age >= scheme.minAge) &&
-          (scheme.maxAge === undefined || age <= scheme.maxAge))
-
-      const incomeMatches =
-        !submittedForm.annualFamilyIncome ||
-        (scheme.maxIncome === undefined || annualFamilyIncome <= scheme.maxIncome)
-
-      return (
-        ageMatches &&
-        incomeMatches &&
-        matchesRule(submittedForm.category, scheme.categories) &&
-        matchesRule(submittedForm.state, scheme.states) &&
-        matchesRule(submittedForm.occupation, scheme.occupations)
-      )
-    })
-  }, [submittedForm])
+  const [usedFallback, setUsedFallback] = useState(false)
 
   function handleChange(event) {
     const { name, value } = event.target
     setForm((current) => ({ ...current, [name]: value }))
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
-    setSubmittedForm(form)
+    setIsLoading(true)
+    setErrorMessage('')
+    setInfoMessage('')
+    setUsedFallback(false)
     setHasSearched(true)
+
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/schemes/recommend`, form)
+
+      setRecommendations(response.data.recommendations || [])
+      setUsedFallback(Boolean(response.data.usedFallback))
+      setInfoMessage(response.data.message || '')
+    } catch (error) {
+      setRecommendations([])
+      setErrorMessage(
+        error.response?.data?.message || 'We could not analyze your profile right now.',
+      )
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   function handleReset() {
     setForm(initialForm)
-    setSubmittedForm(initialForm)
+    setRecommendations([])
+    setErrorMessage('')
+    setInfoMessage('')
+    setUsedFallback(false)
     setHasSearched(false)
   }
 
@@ -190,18 +80,15 @@ function SchemeFinder() {
       <div className="section-heading">
         <p className="eyebrow">Scheme Finder</p>
         <h2>Find schemes that fit your profile</h2>
-        <p>
-          Use age, state, category, annual family income, and occupation to
-          check which schemes may suit you.
-        </p>
+        <p>Use your age, income, gender, state, and category to get smarter scheme suggestions.</p>
       </div>
 
       <div className="scheme-layout">
         <form className="scheme-form" onSubmit={handleSubmit}>
           <div className="form-intro">
             <p className="card-kicker">Finder input</p>
-            <h3>Enter your details</h3>
-            <p>We will match the details below against the available scheme rules.</p>
+            <h3>Tell us about your profile</h3>
+            <p>We use your details to request AI-supported recommendations from the latest stored scheme data.</p>
           </div>
 
           <label className="field">
@@ -220,11 +107,11 @@ function SchemeFinder() {
             <span>Annual Family Income</span>
             <input
               min="0"
-              name="annualFamilyIncome"
+              name="income"
               onChange={handleChange}
               placeholder="Enter annual family income"
               type="number"
-              value={form.annualFamilyIncome}
+              value={form.income}
             />
           </label>
 
@@ -235,6 +122,18 @@ function SchemeFinder() {
               {categories.map((category) => (
                 <option key={category} value={category}>
                   {category}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="field">
+            <span>Gender</span>
+            <select name="gender" onChange={handleChange} value={form.gender}>
+              <option value="">Select gender</option>
+              {genders.map((gender) => (
+                <option key={gender} value={gender}>
+                  {gender}
                 </option>
               ))}
             </select>
@@ -252,21 +151,9 @@ function SchemeFinder() {
             </select>
           </label>
 
-          <label className="field">
-            <span>Occupation</span>
-            <select name="occupation" onChange={handleChange} value={form.occupation}>
-              <option value="">Select occupation</option>
-              {occupations.map((occupation) => (
-                <option key={occupation} value={occupation}>
-                  {occupation}
-                </option>
-              ))}
-            </select>
-          </label>
-
           <div className="form-actions">
-            <button className="button button-primary" type="submit">
-              Find schemes
+            <button className="button button-primary" type="submit" disabled={isLoading}>
+              {isLoading ? 'Analyzing your profile...' : 'Find schemes'}
             </button>
             <button className="button button-secondary" onClick={handleReset} type="button">
               Reset
@@ -276,42 +163,79 @@ function SchemeFinder() {
 
         <div className="scheme-results">
           <div className="results-header">
-            <p className="card-kicker">Search results</p>
-            <h3>Suitable schemes</h3>
-            <p>{hasSearched ? `${matchedSchemes.length} match found` : 'Search to view results'}</p>
+            <p className="card-kicker">Recommendations</p>
+            <h3>Suggested schemes</h3>
+            <p>
+              {isLoading
+                ? 'Analyzing your profile...'
+                : hasSearched
+                  ? `${recommendations.length} scheme${recommendations.length === 1 ? '' : 's'} found`
+                  : 'Submit your details to view recommendations'}
+            </p>
           </div>
 
-          {hasSearched ? (
-            matchedSchemes.length > 0 ? (
-            <div className="results-grid">
-              {matchedSchemes.map((scheme) => (
-                <article className="scheme-card" key={scheme.name}>
-                  <h3>{scheme.name}</h3>
-                  <p>{scheme.description}</p>
-                  <p className="scheme-benefit">{scheme.benefit}</p>
-                  <div className="scheme-meta">
-                    {formatEligibility(scheme).map((item) => (
-                      <span className="scheme-chip" key={`${scheme.name}-${item}`}>
-                        {item}
-                      </span>
-                    ))}
-                  </div>
-                </article>
-              ))}
+          <p className="scheme-note">
+            Deadlines and details may change. Please verify on official website before applying.
+          </p>
+
+          {errorMessage ? <p className="form-message form-message-error">{errorMessage}</p> : null}
+          {infoMessage ? (
+            <p className={usedFallback ? 'form-message form-message-warning' : 'form-message form-message-success'}>
+              {infoMessage}
+            </p>
+          ) : null}
+
+          {isLoading ? (
+            <div className="scheme-card prompt-state">
+              <h3>Analyzing your profile...</h3>
+              <p>We are reviewing the latest stored scheme data and building your recommendations.</p>
             </div>
+          ) : hasSearched ? (
+            recommendations.length > 0 ? (
+              <div className="results-grid">
+                {recommendations.map((scheme) => (
+                  <article className="scheme-card" key={`${scheme.name}-${scheme.applyLink}`}>
+                    <h3>{scheme.name}</h3>
+                    <p>{scheme.description}</p>
+                    <p className="scheme-benefit">
+                      <strong>Why this fits you:</strong> {scheme.eligibilityReason}
+                    </p>
+                    <div className="scheme-meta">
+                      <span className="scheme-chip">Deadline: {scheme.deadline || 'Check official site'}</span>
+                    </div>
+                    {Array.isArray(scheme.steps) && scheme.steps.length > 0 ? (
+                      <div className="scheme-steps">
+                        <p className="card-kicker">Steps to apply</p>
+                        <ol className="scheme-steps-list">
+                          {scheme.steps.map((step) => (
+                            <li key={`${scheme.name}-${step}`}>{step}</li>
+                          ))}
+                        </ol>
+                      </div>
+                    ) : null}
+                    <a
+                      className="button button-primary scheme-apply-button"
+                      href={scheme.applyLink}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      Apply Now
+                    </a>
+                  </article>
+                ))}
+              </div>
             ) : (
-            <div className="scheme-card empty-state">
-              <h3>No schemes matched</h3>
-              <p>Try adjusting the eligibility details to widen the search.</p>
-            </div>
+              <div className="scheme-card empty-state">
+                <h3>No schemes matched</h3>
+                <p>Try adjusting your details to widen the recommendation range.</p>
+              </div>
             )
           ) : (
             <div className="scheme-card prompt-state">
-              <h3>Ready to check eligibility</h3>
+              <h3>Ready to analyze</h3>
               <p>
-                Fill in the details on the left and click <strong>Find schemes</strong> to
-                see matches based on age, state, category, annual family income,
-                and occupation.
+                Add your details and click <strong>Find schemes</strong> to get AI-supported
+                recommendations with reasons, deadlines, and official application links.
               </p>
             </div>
           )}

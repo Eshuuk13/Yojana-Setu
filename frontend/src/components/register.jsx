@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import axios from 'axios'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 
 const initialFormData = {
   fullName: '',
@@ -9,9 +9,10 @@ const initialFormData = {
   confirmPassword: '',
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001'
 
-function Register() {
+function Register({ showSwitchLink = true, onRegistered }) {
+  const navigate = useNavigate()
   const [formData, setFormData] = useState(initialFormData)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -45,12 +46,22 @@ function Register() {
         password: formData.password,
       })
 
-      setSuccessMessage(response.data?.message || 'Registration successful.')
+      setSuccessMessage(response.data?.message || 'Registration successful. Please log in.')
       setFormData(initialFormData)
+      window.setTimeout(() => {
+        if (onRegistered) {
+          onRegistered()
+          return
+        }
+
+        navigate('/auth', { replace: true })
+      }, 800)
     } catch (error) {
-      setErrorMessage(
-        error.response?.data?.message || 'Unable to register right now. Please try again.',
-      )
+        if (!error.response) {
+          setErrorMessage('Server not reachable. Check your connection.')
+        } else {
+            setErrorMessage(error.response.data?.message || 'Registration failed.')
+          }
     } finally {
       setIsSubmitting(false)
     }
@@ -148,12 +159,14 @@ function Register() {
             </button>
           </form>
 
-          <p className="login-footer">
-            Already have an account?{' '}
-            <Link className="text-link" to="/login">
-              Log in
-            </Link>
-          </p>
+          {showSwitchLink ? (
+            <p className="login-footer">
+              Already have an account?{' '}
+              <Link className="text-link" to="/auth">
+                Log in
+              </Link>
+            </p>
+          ) : null}
         </article>
       </div>
     </section>
